@@ -1,72 +1,76 @@
-from playwright.sync_api import sync_playwright
-import time
-from urllib.parse import urlencode, urljoin
+from util.browser import get_browser
+from util.logger import logger
+import re
 
-class BaseScraper:
-    def __init__(self, headless=True, filters=None):
-        """
-        Inicializa a classe com o navegador e os filtros.
+BASE_URL = "https://www.olx.com.br/imoveis/venda/estado-pr/regiao-de-curitiba-e-paranagua/grande-curitiba"
 
-        :param headless: Se o navegador será iniciado no modo headless (sem interface gráfica).
-        :param filters: Um dicionário com os filtros a serem aplicados na pesquisa.
-        """
-        self.headless = headless
-        self.filters = filters if filters else {}
-        self.browser = None
-        self.page = None
+def extract_olx_ads():
+    all_ads = []
+    logger.info("Iniciando extração da primeira página da OLX")
+    browser, playwright = get_browser()
+    try:
+        page = browser.new_page()
+        logger.debug(f"Acessando URL: {BASE_URL}")
+        page.goto(BASE_URL, timeout=60000, wait_until="domcontentloaded")
+        page.wait_for_timeout(2000)
 
-    def start_browser(self):
-        """Inicia o navegador (Chromium por padrão)"""
-        with sync_playwright() as p:
-            self.browser = p.chromium.launch(headless=self.headless)
-            self.page = self.browser.new_page()
-            return self.page
+        ads = page.query_selector_all('.olx-adcard__content[data-mode="horizontal"]')
+        logger.info(f"Total de anúncios encontrados: {len(ads)}")
 
-    def close_browser(self):
-        """Fecha o navegador"""
-        if self.browser:
-            self.browser.close()
+        for index, ad in enumerate(ads):
+            try:
+                titulo_element = ad.query_selector("h2.olx-text.olx-text--body-large")
+                titulo = titulo_element.inner_text().strip() if titulo_element else "Título não encontrado"
 
-    def navigate_to(self, url):
-        """Navega até o URL especificado"""
-        if self.page:
-            self.page.goto(url)
+                preco_element = ad.query_selector(".olx-adcard__mediumbody")
+                preco_raw = preco_element.inner_text().strip() if preco_element else ""
 
-    def build_search_url(self, base_url):
-        """
-        Constrói a URL de pesquisa com base nos filtros fornecidos.
+                preco_match = re.search(r"R\$ [\d\.,]+(?=\\n|$)", preco_raw)
+                iptu_match = re.search(r"IPTU R\$ [\d\.,]+(?=\\n|$)", preco_raw)
+                condominio_match = re.search(r"Condomínio R\$ [\d\.,]+(?=\\n|$)", preco_raw)
 
-        :param base_url: A URL base para a pesquisa.
-        :return: A URL final com os filtros aplicados.
-        """
-        if not self.filters:
-            return base_url
+                preco = preco_match.group().split("R$")[-1].strip() if preco_match else None
+                iptu = iptu_match.group().split("R$")[-1].strip() if iptu_match else None
+                condominio = condominio_match.group().split("R$")[-1].strip() if condominio_match else None
 
-        query_params = {key: value for key, value in self.filters.items() if value is not None}
-        
-        if '?' in base_url:
-            return f"{base_url}&{urlencode(query_params)}"
-        else:
-            return f"{base_url}?{urlencode(query_params)}"
+                detalhes_element = ad.query_selector(".olx-adcard__detalhes")
+                detalhes_raw = detalhes_element.inner_text().strip() if detalhes_element else ""
+                detalhes_split = detalhes_raw.split("\n")
+                quartos = detalhes_split[0] if len(detalhes_split) > 0 else None
+                tamanho = detalhes_split[1] if len(detalhes_split) > 1 else None
+                vagas = detalhes_split[2] if len(detalhes_split) > 2 else None
+                banheiros = detalhes_split[3] if len(detalhes_split) > 3 else None
 
-    def get_page_title(self):
-        """Retorna o título da página atual"""
-        if self.page:
-            return self.page.title()
+                location_element = ad.query_selector(".olx-adcard__location")
+                location = location_element.inner_text().strip() if location_element else "Local não encontrado"
 
-    def wait_for_selector(self, selector, timeout=5000):
-        """Aguarda um elemento aparecer na página"""
-        if self.page:
-            self.page.wait_for_selector(selector, timeout=timeout)
+                date_element = ad.query_selector(".olx-adcard__date")
+                date = date_element.inner_text().strip() if date_element else "Data não encontrada"
 
-    def extract_data(self, selector):
-        """Extrai texto do elemento especificado"""
-        if self.page:
-            element = self.page.query_selector(selector)
-            return element.inner_text() if element else None
+                url_element = ad.query_selector("a.olx-adcard__link")
+                url = url_element.get_attribute("href") if url_element else "URL não encontrada"
 
-    def scroll_page(self):
-        """Rola a página para baixo (pode ser útil para carregar conteúdo dinâmico)"""
-        if self.page:
-            self.page.mouse.wheel(0, 1000)
-            time.sleep(2)
+                # logger.debug(f"[{index}] Anúncio extraído: {titulo} | {preco} | {quartos} | {tamanho} | {vagas} | {banheiros} | {location} | {date} | {url}")
+
+                all_ads.append({
+                    "titulo": titulo,
+                    "preco": preco,
+                    "iptu": iptu,
+                    "condominio": condominio,
+                    "quartos": quartos,
+                    "tamanho": tamanho,
+                    "vagas": vagas,
+                    "banheiros": banheiros,
+                    "location": location,
+                    "date": date,
+                    "url": url
+                })
+            except Exception as e:
+                logger.warning(f"[{index}] Falha ao extrair anúncio: {e}")
+    except Exception as e:
+        logger.error(f"Erro durante a extração: {e}")
+    finally:
+        browser.close()
+        playwright.stop()
+        logger.success(f"Extração finalizada. Total de anúncios válidos: {len(all_ads)}")
+        return all_ads
