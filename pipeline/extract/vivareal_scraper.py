@@ -14,58 +14,69 @@ def extract_vivareal_ads():
         page.goto(BASE_URL, timeout=60000, wait_until="domcontentloaded")
         page.wait_for_timeout(2000)
 
-        ads = page.query_selector_all('[data-cy="rp-cardProperty-street-txt"]')
+        ads = page.query_selector_all('[data-cy="rp-property-cd"]')
         logger.info(f"Total de anúncios encontrados: {len(ads)}")
-        # for index, ad in enumerate(ads):
-        #     try:
-        #         titulo_element = ad.query_selector("h2.olx-text.olx-text--body-large")
-        #         titulo = titulo_element.inner_text().strip() if titulo_element else "Título não encontrado"
+        for index, ad in enumerate(ads):
+            try:
+                preco_container = ad.query_selector('[data-cy="rp-cardProperty-price-txt"]')
+                preco_raw = preco_container.inner_text().strip() if preco_container else ""
 
-        #         preco_element = ad.query_selector(".olx-adcard__mediumbody")
-        #         preco_raw = preco_element.inner_text().strip() if preco_element else ""
+                preco_match = re.search(r"R\$ [\d\.\,]+", preco_raw)
+                iptu_match = re.search(r"IPTU R\$ [\d\.\,]+", preco_raw)
+                condominio_match = re.search(r"(Cond\.|Condom[ií]nio) R\$ [\d\.\,]+", preco_raw)
 
-        #         preco_match = re.search(r"R\$ [\d\.,]+(?=\\n|$)", preco_raw)
-        #         iptu_match = re.search(r"IPTU R\$ [\d\.,]+(?=\\n|$)", preco_raw)
-        #         condominio_match = re.search(r"Condomínio R\$ [\d\.,]+(?=\\n|$)", preco_raw)
+                preco = preco_match.group().split("R$")[-1].strip() if preco_match else None
+                iptu = iptu_match.group().split("R$")[-1].strip() if iptu_match else None
+                condominio = condominio_match.group().split("R$")[-1].strip() if condominio_match else None
 
-        #         preco = preco_match.group().split("R$")[-1].strip() if preco_match else None
-        #         iptu = iptu_match.group().split("R$")[-1].strip() if iptu_match else None
-        #         condominio = condominio_match.group().split("R$")[-1].strip() if condominio_match else None
+                tamanho_element = ad.query_selector('[data-cy="rp-cardProperty-propertyArea-txt"]')
+                quartos_element = ad.query_selector('[data-cy="rp-cardProperty-bedroomQuantity-txt"]')
+                banheiros_element = ad.query_selector('[data-cy="rp-cardProperty-bathroomQuantity-txt"]')
+                vagas_element = ad.query_selector('[data-cy="rp-cardProperty-parkingSpacesQuantity-txt"]')
 
-        #         detalhes_element = ad.query_selector(".olx-adcard__detalhes")
-        #         detalhes_raw = detalhes_element.inner_text().strip() if detalhes_element else ""
-        #         detalhes_split = detalhes_raw.split("\n")
-        #         quartos = detalhes_split[0] if len(detalhes_split) > 0 else None
-        #         tamanho = detalhes_split[1] if len(detalhes_split) > 1 else None
-        #         vagas = detalhes_split[2] if len(detalhes_split) > 2 else None
-        #         banheiros = detalhes_split[3] if len(detalhes_split) > 3 else None
+                tamanho_raw = tamanho_element.inner_text().strip() if tamanho_element else None
+                quartos_raw = quartos_element.inner_text().strip() if quartos_element else None
+                banheiros_raw = banheiros_element.inner_text().strip() if banheiros_element else None
+                vagas_raw = vagas_element.inner_text().strip() if vagas_element else None
 
-        #         location_element = ad.query_selector(".olx-adcard__location")
-        #         location = location_element.inner_text().strip() if location_element else "Local não encontrado"
+                tamanho = int(re.search(r"\d+", tamanho_raw).group()) if tamanho_raw and re.search(r"\d+", tamanho_raw) else None
+                quartos = int(re.search(r"\d+", quartos_raw).group()) if quartos_raw and re.search(r"\d+", quartos_raw) else None
+                banheiros = int(re.search(r"\d+", banheiros_raw).group()) if banheiros_raw and re.search(r"\d+", banheiros_raw) else None
+                vagas = int(re.search(r"\d+", vagas_raw).group()) if vagas_raw and re.search(r"\d+", vagas_raw) else None
 
-        #         date_element = ad.query_selector(".olx-adcard__date")
-        #         date = date_element.inner_text().strip() if date_element else "Data não encontrada"
+                bairro_element = ad.query_selector('[data-cy="rp-cardProperty-location-txt"]')
+                rua_element = ad.query_selector('[data-cy="rp-cardProperty-street-txt"]')
 
-        #         url_element = ad.query_selector("a.olx-adcard__link")
-        #         url = url_element.get_attribute("href") if url_element else "URL não encontrada"
+                bairro_raw = bairro_element.inner_text().strip() if bairro_element else ""
+                rua_raw = rua_element.inner_text().strip() if rua_element else ""
 
-        #         # logger.debug(f"[{index}] Anúncio extraído: {titulo} | {preco} | {quartos} | {tamanho} | {vagas} | {banheiros} | {location} | {date} | {url}")
+                bairro_match = re.search(r"em\s+(.*)", bairro_raw)
+                bairro = bairro_match.group(1).strip() if bairro_match else bairro_raw
 
-        #         all_ads.append({
-        #             "titulo": titulo,
-        #             "preco": preco,
-        #             "iptu": iptu,
-        #             "condominio": condominio,
-        #             "quartos": quartos,
-        #             "tamanho": tamanho,
-        #             "vagas": vagas,
-        #             "banheiros": banheiros,
-        #             "location": location,
-        #             "date": date,
-        #             "url": url
-        #         })
-        #     except Exception as e:
-        #         logger.warning(f"[{index}] Falha ao extrair anúncio: {e}")
+                localizacao = f"{bairro}, {rua_raw}" if bairro and rua_raw else bairro or rua_raw
+
+                date = "Data não encontrada"
+
+                url_element = ad.query_selector("a")
+                url = url_element.get_attribute("href") if url_element else "URL não encontrada"
+
+                # logger.debug(f"[{index}] Anúncio extraído: Casa para comprar em {bairro} | {preco} | {quartos} | {tamanho} | {vagas} | {banheiros} | {localizacao} | {date} | {url}")
+
+                all_ads.append({
+                    "titulo": f"Casa para comprar em {bairro}",
+                    "preco": preco,
+                    "iptu": iptu,
+                    "condominio": condominio,
+                    "quartos": quartos,
+                    "tamanho": tamanho,
+                    "vagas": vagas,
+                    "banheiros": banheiros,
+                    "localizacao": localizacao,
+                    "date": date,
+                    "url": url
+                })
+            except Exception as e:
+                logger.warning(f"[{index}] Falha ao extrair anúncio: {e}")
     except Exception as e:
         logger.error(f"Erro durante a extração: {e}")
     finally:
