@@ -1,14 +1,10 @@
-from pipeline.extract.olx_scraper import extract_olx_ads
-from pipeline.extract.vivareal_scraper import extract_vivareal_ads
-from pipeline.extract.chavesnamao_scraper import extract_chavesnamao_ads
-from pipeline.extract.imovelweb_scraper import extract_imovelweb_ads
-from pipeline.extract.zapimoveis_scraper import extract_zapimoveis_ads
+from pipeline.extract.olx_scraper import OlxScraper
+from pipeline.extract.vivareal_scraper import VivaRealScraper
+from pipeline.extract.chavesnamao_scraper import ChavesNaMaoScraper
+from pipeline.extract.imovelweb_scraper import ImovelWebScraper
+from pipeline.extract.zapimoveis_scraper import ZapImoveisScraper
 
 if __name__ == "__main__":
-    #ads = extract_olx_ads()
-    ads = extract_vivareal_ads()
-    #ads = extract_chavesnamao_ads()
-    #ads = extract_imovelweb_ads()
-    #ads = extract_zapimoveis_ads()
-    for ad in ads:
-        print(ad)
+    scraper = ChavesNaMaoScraper()
+    ads = scraper.extract()
+    print(ads)

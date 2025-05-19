@@ -1,76 +1,58 @@
-from util.browser import get_browser
-from util.logger import logger
+from pipeline.extract.base_scraper import BaseScraper
 import re
 
-BASE_URL = "https://www.olx.com.br/imoveis/venda/estado-pr/regiao-de-curitiba-e-paranagua/grande-curitiba"
+class OlxScraper(BaseScraper):
+    def __init__(self):
+        super().__init__("https://www.olx.com.br/imoveis/venda/estado-pr/regiao-de-curitiba-e-paranagua/grande-curitiba")
 
-def extract_olx_ads():
-    all_ads = []
-    logger.info("Iniciando extração da primeira página da OLX")
-    browser, playwright = get_browser()
-    try:
-        page = browser.new_page()
-        logger.debug(f"Acessando URL: {BASE_URL}")
-        page.goto(BASE_URL, timeout=60000, wait_until="domcontentloaded")
-        page.wait_for_timeout(2000)
+    def get_ads(self, page):
+        return page.query_selector_all('.olx-adcard__content[data-mode="horizontal"]')
 
-        ads = page.query_selector_all('.olx-adcard__content[data-mode="horizontal"]')
-        logger.info(f"Total de anúncios encontrados: {len(ads)}")
+    def parse_ad(self, ad, page):
+        def get_text(selector):
+            el = ad.query_selector(selector)
+            return el.inner_text().strip() if el else ""
 
-        for index, ad in enumerate(ads):
-            try:
-                titulo_element = ad.query_selector("h2.olx-text.olx-text--body-large")
-                titulo = titulo_element.inner_text().strip() if titulo_element else "Título não encontrado"
+        titulo = get_text("h2.olx-text.olx-text--body-large")
 
-                preco_element = ad.query_selector(".olx-adcard__mediumbody")
-                preco_raw = preco_element.inner_text().strip() if preco_element else ""
+        preco_raw = get_text(".olx-adcard__mediumbody")
+        preco = self._extract_val(preco_raw, r"R\$ ([\d\.,]+)")
+        iptu = self._extract_val(preco_raw, r"IPTU R\$ ([\d\.,]+)")
+        condominio = self._extract_val(preco_raw, r"Condomínio R\$ ([\d\.,]+)")
 
-                preco_match = re.search(r"R\$ [\d\.,]+(?=\\n|$)", preco_raw)
-                iptu_match = re.search(r"IPTU R\$ [\d\.,]+(?=\\n|$)", preco_raw)
-                condominio_match = re.search(r"Condomínio R\$ [\d\.,]+(?=\\n|$)", preco_raw)
+        detalhes_raw = get_text(".olx-adcard__detalhes")
+        detalhes = detalhes_raw.split("\n") if detalhes_raw else []
 
-                preco = preco_match.group().split("R$")[-1].strip() if preco_match else None
-                iptu = iptu_match.group().split("R$")[-1].strip() if iptu_match else None
-                condominio = condominio_match.group().split("R$")[-1].strip() if condominio_match else None
+        quartos = self._parse_int(detalhes[0]) if len(detalhes) > 0 else None
+        tamanho = self._parse_int(detalhes[1]) if len(detalhes) > 1 else None
+        vagas = self._parse_int(detalhes[2]) if len(detalhes) > 2 else None
+        banheiros = self._parse_int(detalhes[3]) if len(detalhes) > 3 else None
 
-                detalhes_element = ad.query_selector(".olx-adcard__detalhes")
-                detalhes_raw = detalhes_element.inner_text().strip() if detalhes_element else ""
-                detalhes_split = detalhes_raw.split("\n")
-                quartos = detalhes_split[0] if len(detalhes_split) > 0 else None
-                tamanho = detalhes_split[1] if len(detalhes_split) > 1 else None
-                vagas = detalhes_split[2] if len(detalhes_split) > 2 else None
-                banheiros = detalhes_split[3] if len(detalhes_split) > 3 else None
+        localizacao = get_text(".olx-adcard__location")
+        date = get_text(".olx-adcard__date")
 
-                location_element = ad.query_selector(".olx-adcard__location")
-                location = location_element.inner_text().strip() if location_element else "Local não encontrado"
+        url = ad.query_selector("a.olx-adcard__link").get_attribute("href") if ad.query_selector("a.olx-adcard__link") else None
 
-                date_element = ad.query_selector(".olx-adcard__date")
-                date = date_element.inner_text().strip() if date_element else "Data não encontrada"
+        return {
+            "titulo": titulo,
+            "preco": preco,
+            "iptu": iptu,
+            "condominio": condominio,
+            "quartos": quartos,
+            "tamanho": tamanho,
+            "vagas": vagas,
+            "banheiros": banheiros,
+            "localizacao": localizacao,
+            "date": date,
+            "url": url
+        }
 
-                url_element = ad.query_selector("a.olx-adcard__link")
-                url = url_element.get_attribute("href") if url_element else "URL não encontrada"
+    def _parse_int(self, text):
+        if not text:
+            return None
+        match = re.search(r"\d+", text)
+        return int(match.group()) if match else None
 
-                # logger.debug(f"[{index}] Anúncio extraído: {titulo} | {preco} | {quartos} | {tamanho} | {vagas} | {banheiros} | {location} | {date} | {url}")
-
-                all_ads.append({
-                    "titulo": titulo,
-                    "preco": preco,
-                    "iptu": iptu,
-                    "condominio": condominio,
-                    "quartos": quartos,
-                    "tamanho": tamanho,
-                    "vagas": vagas,
-                    "banheiros": banheiros,
-                    "location": location,
-                    "date": date,
-                    "url": url
-                })
-            except Exception as e:
-                logger.warning(f"[{index}] Falha ao extrair anúncio: {e}")
-    except Exception as e:
-        logger.error(f"Erro durante a extração: {e}")
-    finally:
-        browser.close()
-        playwright.stop()
-        logger.success(f"Extração finalizada. Total de anúncios válidos: {len(all_ads)}")
-        return all_ads
+    def _extract_val(self, raw_text, pattern):
+        match = re.search(pattern, raw_text)
+        return match.group(1).strip() if match else None

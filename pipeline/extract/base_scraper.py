@@ -1,63 +1,51 @@
-from playwright.sync_api import sync_playwright
-import time
+from abc import ABC, abstractmethod
+from util.browser import get_browser
+from util.logger import logger
 
-class BaseScraper:
-    def __init__(self, headless=True):
-        self.headless = headless
+class BaseScraper(ABC):
+    def __init__(self, base_url: str):
+        self.base_url = base_url
         self.browser = None
-        self.page = None
+        self.playwright = None
 
-    def start_browser(self):
-        """Inicia o navegador (Chromium por padrão)"""
-        with sync_playwright() as p:
-            self.browser = p.chromium.launch(headless=self.headless)
-            self.page = self.browser.new_page()
-            return self.page
+    def setup(self):
+        self.browser, self.playwright = get_browser()
 
-    def close_browser(self):
-        """Fecha o navegador"""
+    def teardown(self):
         if self.browser:
             self.browser.close()
+        if self.playwright:
+            self.playwright.stop()
 
-    def navigate_to(self, url):
-        """Navega até o URL especificado"""
-        if self.page:
-            self.page.goto(url)
-
-    def get_page_title(self):
-        """Retorna o título da página atual"""
-        if self.page:
-            return self.page.title()
-
-    def wait_for_selector(self, selector, timeout=5000):
-        """Aguarda um elemento aparecer na página"""
-        if self.page:
-            self.page.wait_for_selector(selector, timeout=timeout)
-
-    def extract_data(self, selector):
-        """Extrai texto do elemento especificado"""
-        if self.page:
-            element = self.page.query_selector(selector)
-            return element.inner_text() if element else None
-
-    def scroll_page(self):
-        """Rola a página para baixo (pode ser útil para carregar conteúdo dinâmico)"""
-        if self.page:
-            self.page.mouse.wheel(0, 1000)
-            time.sleep(2)
-
-    def scrape(self, url):
-        """Método principal para rodar o scraping"""
+    def extract(self):
+        logger.info(f"Iniciando extração de: {self.__class__.__name__}")
+        self.setup()
+        all_ads = []
         try:
-            self.start_browser()
-            self.navigate_to(url)
-            
-            print(f"Page Title: {self.get_page_title()}")
-
-            data = self.extract_data('.nome-da-classe')
-            print(f"Extracted Data: {data}")
-
-            self.scroll_page()
-        
+            page = self.browser.new_page()
+            logger.debug(f"Acessando URL: {self.base_url}")
+            page.goto(self.base_url, timeout=60000, wait_until="domcontentloaded")
+            page.wait_for_timeout(2000)
+            ads = self.get_ads(page)
+            logger.info(f"{len(ads)} anúncios encontrados.")
+            for index, ad in enumerate(ads):
+                try:
+                    ad_data = self.parse_ad(ad, page)
+                    if ad_data:
+                        all_ads.extend(ad_data) if isinstance(ad_data, list) else all_ads.append(ad_data)
+                except Exception as e:
+                    logger.warning(f"[{index}] Falha ao extrair anúncio: {e}")
+        except Exception as e:
+            logger.error(f"Erro durante a extração: {e}")
         finally:
-            self.close_browser()
+            self.teardown()
+            logger.success(f"Extração finalizada. Total de anúncios válidos: {len(all_ads)}")
+        return all_ads
+
+    @abstractmethod
+    def get_ads(self, page):
+        pass
+
+    @abstractmethod
+    def parse_ad(self, ad, page):
+        pass

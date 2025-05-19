@@ -1,103 +1,79 @@
-from util.browser import get_browser
-from util.logger import logger
+from pipeline.extract.base_scraper import BaseScraper
 import re
 
-BASE_URL = "https://www.chavesnamao.com.br/imoveis-a-venda/pr-curitiba/"
+class ChavesNaMaoScraper(BaseScraper):
+    def __init__(self):
+        super().__init__("https://www.chavesnamao.com.br/imoveis-a-venda/pr-curitiba/")
 
-def extract_chavesnamao_ads():
-    all_ads = []
-    logger.info("Iniciando extração da primeira página da Chaves na Mão")
-    browser, playwright = get_browser()
-    try:
-        page = browser.new_page()
-        logger.debug(f"Acessando URL: {BASE_URL}")
-        page.goto(BASE_URL, timeout=60000, wait_until="domcontentloaded")
-
+    def get_ads(self, page):
+        # Scroll manual pra carregar tudo
         page_height = page.evaluate("document.body.scrollHeight")
         current_height = 500
 
         while current_height + 3500 < page_height:
             page.evaluate(f"window.scrollTo(0, {current_height})")
             page.wait_for_timeout(1000)
-            current_height = current_height + 500
+            current_height += 500
 
         page.wait_for_timeout(2000)
+        return page.query_selector_all('div[data-template="list"].styles-module__ViVk2q__card.card-module__cvK-Xa__card')
 
-        ads = page.query_selector_all('div[data-template="list"].styles-module__ViVk2q__card.card-module__cvK-Xa__card')
-        logger.info(f"Total de anúncios encontrados: {len(ads)}")
-        for index, ad in enumerate(ads):
-            try:
-                titulo_element = ad.query_selector("h2.olx-text.olx-text--body-large")
-                titulo = titulo_element.inner_text().strip() if titulo_element else "Título não encontrado"
+    def parse_ad(self, ad, page):
+        def get_text(el):
+            return el.inner_text().strip() if el else ""
 
-                infos_container = ad.query_selector('span.card-module__cvK-Xa__cardContent')
+        titulo_el = ad.query_selector("h2.olx-text.olx-text--body-large")
+        titulo = get_text(titulo_el) or "Título não encontrado"
 
-                preco_raw = infos_container.query_selector('b')
-                preco = preco_raw.inner_text().strip().split("R$")[-1].strip() if preco_raw else None
+        infos = ad.query_selector('span.card-module__cvK-Xa__cardContent')
 
-                condominio_raw = infos_container.query_selector('small[aria-label="Condominio"]')
-                condominio_text = condominio_raw.inner_text().strip() if condominio_raw else ""
-                condominio_match = re.search(r"R\$ [\d\.\,]+", condominio_text)
-                condominio = condominio_match.group().split("R$")[-1].strip() if condominio_match else None
+        preco = self._extract_val(get_text(infos.query_selector('b')), r"([\d\.,]+)")
+        cond = self._extract_val(get_text(infos.query_selector('small[aria-label="Condominio"]')), r"R\$ ([\d\.,]+)")
+        iptu = self._extract_val(get_text(infos.query_selector('small[aria-label="IPTU"]')), r"R\$ ([\d\.,]+)")
 
-                iptu_raw = infos_container.query_selector('small[aria-label="IPTU"]')
-                iptu_text = iptu_raw.inner_text().strip() if iptu_raw else ""
-                iptu_match = re.search(r"R\$ [\d\.\,]+", iptu_text)
-                iptu = iptu_match.group().split("R$")[-1].strip() if iptu_match else None
+        detalhes_container = infos.query_selector("span.style-module__Yo5w-q__list ")
+        detalhes = detalhes_container.query_selector_all("p.styles-module__aBT18q__body2") if detalhes_container else []
 
-                detalhes_container = infos_container.query_selector("span.style-module__Yo5w-q__list ")
-                detales_list_container = detalhes_container.query_selector_all("p.styles-module__aBT18q__body2")
+        tamanho = quartos = banheiros = vagas = None
 
-                tamanho = None
-                quartos = None
-                vagas = None
-                banheiros = None
+        for d in detalhes:
+            text = get_text(d)
+            if "m²" in text:
+                tamanho = self._parse_int(text)
+            elif "Quarto" in text:
+                quartos = self._parse_int(text)
+            elif "Banheiro" in text:
+                banheiros = self._parse_int(text)
+            elif "Garagem" in text:
+                vagas = self._parse_int(text)
 
-                for detalhe in detales_list_container:
-                    text = detalhe.inner_text().strip()
+        rua = get_text(ad.query_selector('p[title*=","]'))
+        bairro_el = ad.query_selector_all('p[title]')
+        bairro = get_text(bairro_el[1]) if len(bairro_el) > 1 else ""
 
-                    tamanho_match = re.search(r"(\d+)\s?m²", text)
-                    quartos_match = re.search(r"(\d+)\s*Quartos?", text, re.IGNORECASE)
-                    vagas_match = re.search(r"(\d+)\s*Garagem", text, re.IGNORECASE)
-                    banheiros_match = re.search(r"(\d+)\s*Banheiros?", text, re.IGNORECASE)
+        localizacao = f"{bairro}, {rua}" if bairro and rua else bairro or rua
 
-                    if tamanho_match: tamanho = int(tamanho_match.group(1)); continue
-                    if quartos_match: quartos = int(quartos_match.group(1)); continue
-                    if vagas_match: vagas = int(vagas_match.group(1)); continue
-                    if banheiros_match: banheiros = int(banheiros_match.group(1)); continue
+        url_el = ad.query_selector("a")
+        url = "https://www.chavesnamao.com.br" + url_el.get_attribute("href") if url_el else None
 
-                rua_element = ad.query_selector('p[title*=","]')
-                bairro_element = ad.query_selector_all('p[title]')[1]
+        return {
+            "titulo": f"Casa para comprar em {bairro}",
+            "preco": preco,
+            "iptu": iptu,
+            "condominio": cond,
+            "quartos": quartos,
+            "tamanho": tamanho,
+            "vagas": vagas,
+            "banheiros": banheiros,
+            "localizacao": localizacao,
+            "date": "Data não encontrada",
+            "url": url
+        }
 
-                rua = rua_element.inner_text().strip() if rua_element else ""
-                bairro = bairro_element.inner_text().strip() if bairro_element else ""
+    def _parse_int(self, text):
+        match = re.search(r"\d+", text)
+        return int(match.group()) if match else None
 
-                localizacao = f"{bairro}, {rua}" if bairro and rua else bairro or rua
-
-                date = "Data não encontrada"
-
-                url_element = ad.query_selector("a")
-                url = "https://www.chavesnamao.com.br" + url_element.get_attribute("href") if url_element else "URL não encontrada"
-
-                all_ads.append({
-                    "titulo": f"Casa para comprar em {bairro}",
-                    "preco": preco,
-                    "iptu": iptu,
-                    "condominio": condominio,
-                    "quartos": quartos,
-                    "tamanho": tamanho,
-                    "vagas": vagas,
-                    "banheiros": banheiros,
-                    "localizacao": localizacao,
-                    "date": date,
-                    "url": url
-                })
-            except Exception as e:
-                logger.warning(f"[{index}] Falha ao extrair anúncio: {e}")
-    except Exception as e:
-        logger.error(f"Erro durante a extração: {e}")
-    finally:
-        browser.close()
-        playwright.stop()
-        logger.success(f"Extração finalizada. Total de anúncios válidos: {len(all_ads)}")
-        return all_ads
+    def _extract_val(self, text, pattern):
+        match = re.search(pattern, text)
+        return match.group(1).replace(".", "").replace(",", ".") if match else None
