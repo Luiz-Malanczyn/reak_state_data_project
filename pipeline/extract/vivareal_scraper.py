@@ -6,6 +6,54 @@ BASE_URL = "https://www.vivareal.com.br/venda/parana/curitiba/?transacao=venda&o
 
 def extract_vivareal_ads():
     all_ads = []
+    def extrai_dados(ad, multiple_ads=False):
+        preco = None
+        url = None
+        preco_container = ad.query_selector('[data-cy="rp-cardProperty-price-txt"]')
+        preco_raw = preco_container.inner_text().strip() if preco_container else ""
+
+        preco_match = re.search(r"R\$ [\d\.\,]+", preco_raw)
+        iptu_match = re.search(r"IPTU R\$ [\d\.\,]+", preco_raw)
+        condominio_match = re.search(r"(Cond\.|Condom[ií]nio) R\$ [\d\.\,]+", preco_raw)
+
+        if not multiple_ads:
+            preco = preco_match.group().split("R$")[-1].strip() if preco_match else None
+            url_element = ad.query_selector("a")
+            url = url_element.get_attribute("href") if url_element else "URL não encontrada"
+            
+        iptu = iptu_match.group().split("R$")[-1].strip() if iptu_match else None
+        condominio = condominio_match.group().split("R$")[-1].strip() if condominio_match else None
+
+        tamanho_element = ad.query_selector('[data-cy="rp-cardProperty-propertyArea-txt"]')
+        quartos_element = ad.query_selector('[data-cy="rp-cardProperty-bedroomQuantity-txt"]')
+        banheiros_element = ad.query_selector('[data-cy="rp-cardProperty-bathroomQuantity-txt"]')
+        vagas_element = ad.query_selector('[data-cy="rp-cardProperty-parkingSpacesQuantity-txt"]')
+
+        tamanho_raw = tamanho_element.inner_text().strip() if tamanho_element else None
+        quartos_raw = quartos_element.inner_text().strip() if quartos_element else None
+        banheiros_raw = banheiros_element.inner_text().strip() if banheiros_element else None
+        vagas_raw = vagas_element.inner_text().strip() if vagas_element else None
+
+        tamanho = int(re.search(r"\d+", tamanho_raw).group()) if tamanho_raw and re.search(r"\d+", tamanho_raw) else None
+        quartos = int(re.search(r"\d+", quartos_raw).group()) if quartos_raw and re.search(r"\d+", quartos_raw) else None
+        banheiros = int(re.search(r"\d+", banheiros_raw).group()) if banheiros_raw and re.search(r"\d+", banheiros_raw) else None
+        vagas = int(re.search(r"\d+", vagas_raw).group()) if vagas_raw and re.search(r"\d+", vagas_raw) else None
+
+        bairro_element = ad.query_selector('[data-cy="rp-cardProperty-location-txt"]')
+        rua_element = ad.query_selector('[data-cy="rp-cardProperty-street-txt"]')
+
+        bairro_raw = bairro_element.inner_text().strip() if bairro_element else ""
+        rua_raw = rua_element.inner_text().strip() if rua_element else ""
+
+        bairro_match = re.search(r"em\s+(.*)", bairro_raw)
+        bairro = bairro_match.group(1).strip() if bairro_match else bairro_raw
+
+        localizacao = f"{bairro}, {rua_raw}" if bairro and rua_raw else bairro or rua_raw
+
+        date = "Data não encontrada"
+
+        return bairro, preco, iptu, condominio, quartos, tamanho, vagas, banheiros, localizacao, date, url
+
     logger.info("Iniciando extração da primeira página da VivaReal")
     browser, playwright = get_browser()
     try:
@@ -13,68 +61,60 @@ def extract_vivareal_ads():
         logger.debug(f"Acessando URL: {BASE_URL}")
         page.goto(BASE_URL, timeout=60000, wait_until="domcontentloaded")
         page.wait_for_timeout(2000)
-
+        print("Aguardando carregamento da página...")
         ads = page.query_selector_all('[data-cy="rp-property-cd"]')
         logger.info(f"Total de anúncios encontrados: {len(ads)}")
         for index, ad in enumerate(ads):
             try:
-                preco_container = ad.query_selector('[data-cy="rp-cardProperty-price-txt"]')
-                preco_raw = preco_container.inner_text().strip() if preco_container else ""
+                bairro, preco, iptu, condominio, quartos, tamanho, vagas, banheiros, localizacao, date, url = extrai_dados(ad, multiple_ads=False)
+                botao = ad.query_selector('[data-cy="listing-card-deduplicated-button"]')
+                if not botao:
+                    all_ads.append({
+                        "titulo": f"Casa para comprar em {bairro}",
+                        "preco": preco,
+                        "iptu": iptu,
+                        "condominio": condominio,
+                        "quartos": quartos,
+                        "tamanho": tamanho,
+                        "vagas": vagas,
+                        "banheiros": banheiros,
+                        "localizacao": localizacao,
+                        "date": date,
+                        "url": url
+                    })
+                else:
+                    bairro, preco, iptu, condominio, quartos, tamanho, vagas, banheiros, localizacao, date, url = extrai_dados(ad, multiple_ads=True)
+                    botao.click()
+                    page.wait_for_timeout(5000)
+                    page.wait_for_selector('[data-cy="deduplication-modal-list-step"]', timeout=10000)
+                    popup_section = page.query_selector('section.DeduplicationListings_card-listing__D17Um')
+                    if not popup_section:
+                        print("Popup section não encontrada.")
+                        return
 
-                preco_match = re.search(r"R\$ [\d\.\,]+", preco_raw)
-                iptu_match = re.search(r"IPTU R\$ [\d\.\,]+", preco_raw)
-                condominio_match = re.search(r"(Cond\.|Condom[ií]nio) R\$ [\d\.\,]+", preco_raw)
+                    ads_popup = popup_section.query_selector_all('a')
 
-                preco = preco_match.group().split("R$")[-1].strip() if preco_match else None
-                iptu = iptu_match.group().split("R$")[-1].strip() if iptu_match else None
-                condominio = condominio_match.group().split("R$")[-1].strip() if condominio_match else None
+                    for ad_popup in ads_popup:
+                        url = ad_popup.get_attribute('href')
+                        preco_element = ad_popup.query_selector('h2.MainValue_advertiser__total__1ornY')
+                        preco = preco_element.inner_text().strip() if preco_element else ""
 
-                tamanho_element = ad.query_selector('[data-cy="rp-cardProperty-propertyArea-txt"]')
-                quartos_element = ad.query_selector('[data-cy="rp-cardProperty-bedroomQuantity-txt"]')
-                banheiros_element = ad.query_selector('[data-cy="rp-cardProperty-bathroomQuantity-txt"]')
-                vagas_element = ad.query_selector('[data-cy="rp-cardProperty-parkingSpacesQuantity-txt"]')
+                        all_ads.append({
+                            "titulo": f"Casa para comprar em {bairro}",
+                            "preco": preco,
+                            "iptu": iptu,
+                            "condominio": condominio,
+                            "quartos": quartos,
+                            "tamanho": tamanho,
+                            "vagas": vagas,
+                            "banheiros": banheiros,
+                            "localizacao": localizacao,
+                            "date": date,
+                            "url": url
+                        })
 
-                tamanho_raw = tamanho_element.inner_text().strip() if tamanho_element else None
-                quartos_raw = quartos_element.inner_text().strip() if quartos_element else None
-                banheiros_raw = banheiros_element.inner_text().strip() if banheiros_element else None
-                vagas_raw = vagas_element.inner_text().strip() if vagas_element else None
-
-                tamanho = int(re.search(r"\d+", tamanho_raw).group()) if tamanho_raw and re.search(r"\d+", tamanho_raw) else None
-                quartos = int(re.search(r"\d+", quartos_raw).group()) if quartos_raw and re.search(r"\d+", quartos_raw) else None
-                banheiros = int(re.search(r"\d+", banheiros_raw).group()) if banheiros_raw and re.search(r"\d+", banheiros_raw) else None
-                vagas = int(re.search(r"\d+", vagas_raw).group()) if vagas_raw and re.search(r"\d+", vagas_raw) else None
-
-                bairro_element = ad.query_selector('[data-cy="rp-cardProperty-location-txt"]')
-                rua_element = ad.query_selector('[data-cy="rp-cardProperty-street-txt"]')
-
-                bairro_raw = bairro_element.inner_text().strip() if bairro_element else ""
-                rua_raw = rua_element.inner_text().strip() if rua_element else ""
-
-                bairro_match = re.search(r"em\s+(.*)", bairro_raw)
-                bairro = bairro_match.group(1).strip() if bairro_match else bairro_raw
-
-                localizacao = f"{bairro}, {rua_raw}" if bairro and rua_raw else bairro or rua_raw
-
-                date = "Data não encontrada"
-
-                url_element = ad.query_selector("a")
-                url = url_element.get_attribute("href") if url_element else "URL não encontrada"
-
-                # logger.debug(f"[{index}] Anúncio extraído: Casa para comprar em {bairro} | {preco} | {quartos} | {tamanho} | {vagas} | {banheiros} | {localizacao} | {date} | {url}")
-
-                all_ads.append({
-                    "titulo": f"Casa para comprar em {bairro}",
-                    "preco": preco,
-                    "iptu": iptu,
-                    "condominio": condominio,
-                    "quartos": quartos,
-                    "tamanho": tamanho,
-                    "vagas": vagas,
-                    "banheiros": banheiros,
-                    "localizacao": localizacao,
-                    "date": date,
-                    "url": url
-                })
+                    page.mouse.click(10, 10)
+                    page.wait_for_timeout(3000)
             except Exception as e:
                 logger.warning(f"[{index}] Falha ao extrair anúncio: {e}")
     except Exception as e:

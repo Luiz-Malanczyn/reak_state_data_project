@@ -6,9 +6,9 @@ from pipeline.extract.zapimoveis_scraper import extract_zapimoveis_ads
 
 if __name__ == "__main__":
     #ads = extract_olx_ads()
-    #ads = extract_vivareal_ads()
+    ads = extract_vivareal_ads()
     #ads = extract_chavesnamao_ads()
     #ads = extract_imovelweb_ads()
-    ads = extract_zapimoveis_ads()
+    #ads = extract_zapimoveis_ads()
     for ad in ads:
         print(ad)

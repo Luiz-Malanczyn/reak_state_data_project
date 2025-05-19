@@ -6,7 +6,9 @@ BASE_URL = "https://www.zapimoveis.com.br/venda/casas/pr+curitiba/"
 
 def extract_zapimoveis_ads():
     all_ads = []
-    def extrai_dados(ad, preco_extracted, url_extracted, multiple_ads=False):
+    def extrai_dados(ad, multiple_ads=False):
+        preco = None
+        url = None
         preco_container = ad.query_selector('[data-cy="rp-cardProperty-price-txt"]')
         preco_raw = preco_container.inner_text().strip() if preco_container else ""
 
@@ -14,10 +16,7 @@ def extract_zapimoveis_ads():
         iptu_match = re.search(r"IPTU R\$ [\d\.\,]+", preco_raw)
         condominio_match = re.search(r"(Cond\.|Condom[ií]nio) R\$ [\d\.\,]+", preco_raw)
 
-        if multiple_ads:
-            preco = preco_extracted
-            url = url_extracted
-        else:
+        if not multiple_ads:
             preco = preco_match.group().split("R$")[-1].strip() if preco_match else None
             url_element = ad.query_selector("a")
             url = url_element.get_attribute("href") if url_element else "URL não encontrada"
@@ -53,19 +52,7 @@ def extract_zapimoveis_ads():
 
         date = "Data não encontrada"
 
-        all_ads.append({
-            "titulo": f"Casa para comprar em {bairro}",
-            "preco": preco,
-            "iptu": iptu,
-            "condominio": condominio,
-            "quartos": quartos,
-            "tamanho": tamanho,
-            "vagas": vagas,
-            "banheiros": banheiros,
-            "localizacao": localizacao,
-            "date": date,
-            "url": url
-        })
+        return bairro, preco, iptu, condominio, quartos, tamanho, vagas, banheiros, localizacao, date, url
 
     logger.info("Iniciando extração da primeira página da ZapImoveis")
     browser, playwright = get_browser()
@@ -79,24 +66,55 @@ def extract_zapimoveis_ads():
         logger.info(f"Total de anúncios encontrados: {len(ads)}")
         for index, ad in enumerate(ads):
             try:
+                bairro, preco, iptu, condominio, quartos, tamanho, vagas, banheiros, localizacao, date, url = extrai_dados(ad, multiple_ads=False)
                 botao = ad.query_selector('[data-cy="listing-card-deduplicated-button"]')
                 if not botao:
-                    extrai_dados(ad, None, None)
+                    all_ads.append({
+                        "titulo": f"Casa para comprar em {bairro}",
+                        "preco": preco,
+                        "iptu": iptu,
+                        "condominio": condominio,
+                        "quartos": quartos,
+                        "tamanho": tamanho,
+                        "vagas": vagas,
+                        "banheiros": banheiros,
+                        "localizacao": localizacao,
+                        "date": date,
+                        "url": url
+                    })
                 else:
+                    bairro, preco, iptu, condominio, quartos, tamanho, vagas, banheiros, localizacao, date, url = extrai_dados(ad, multiple_ads=True)
                     botao.click()
-                    
-                    page.wait_for_selector('[data-cy="deduplicated-modal"]', timeout=5000)
+                    page.wait_for_timeout(5000)
+                    page.wait_for_selector('[data-cy="deduplication-modal-list-step"]', timeout=10000)
                     popup_section = page.query_selector('section.DeduplicationListings_card-listing__D17Um')
-                    ads = popup_section.query_selector_all('a')
-    
-                    for ad in ads:
-                        url = ad.get_attribute('href')
+                    if not popup_section:
+                        print("Popup section não encontrada.")
+                        return
 
-                        preco_element = ad.query_selector('h2.MainValue_advertiser__total__1ornY')
+                    ads_popup = popup_section.query_selector_all('a')
+
+                    for ad_popup in ads_popup:
+                        url = ad_popup.get_attribute('href')
+                        preco_element = ad_popup.query_selector('h2.MainValue_advertiser__total__1ornY')
                         preco = preco_element.inner_text().strip() if preco_element else ""
 
-                        extrai_dados(ad, preco, url, multiple_ads=True)
-                    page.query_selector('span.l-drawer__close').click()
+                        all_ads.append({
+                            "titulo": f"Casa para comprar em {bairro}",
+                            "preco": preco,
+                            "iptu": iptu,
+                            "condominio": condominio,
+                            "quartos": quartos,
+                            "tamanho": tamanho,
+                            "vagas": vagas,
+                            "banheiros": banheiros,
+                            "localizacao": localizacao,
+                            "date": date,
+                            "url": url
+                        })
+
+                    page.mouse.click(10, 10)
+                    page.wait_for_timeout(3000)
             except Exception as e:
                 logger.warning(f"[{index}] Falha ao extrair anúncio: {e}")
     except Exception as e:
