@@ -2,21 +2,21 @@ from pipeline.extract.base_scraper import BaseScraper
 import re
 
 class ImovelWebScraper(BaseScraper):
-    def __init__(self):
-        super().__init__("https://www.imovelweb.com.br/casas-venda-curitiba-pr.html")
+    def __init__(self, playwright):
+        super().__init__("https://www.imovelweb.com.br/casas-venda-curitiba-pr.html", playwright)
 
-    def get_ads(self, page):
-        return page.query_selector_all('div.postingsList-module__card-container')
+    async def get_ads(self, page):
+        return await page.query_selector_all('div.postingsList-module__card-container')
 
-    def parse_ad(self, ad, page):
-        def get_text(selector):
-            el = ad.query_selector(selector)
-            return el.inner_text().strip() if el else ""
+    async def parse_ad(self, ad, page):
+        async def get_text(selector):
+            el = await ad.query_selector(selector)
+            return (await el.inner_text()).strip() if el else ""
 
-        preco = self._extract_val(get_text('div.postingPrices-module__price'), r"R\$ ([\d\.,]+)")
-        condominio = self._extract_val(get_text('div[data-qa="expensas"]'), r"R\$ ([\d\.,]+)")
+        preco = self._extract_val(await get_text('div.postingPrices-module__price'), r"R\$ ([\d\.,]+)")
+        condominio = self._extract_val(await get_text('div[data-qa="expensas"]'), r"R\$ ([\d\.,]+)")
 
-        features = get_text('h3[data-qa="POSTING_CARD_FEATURES"]')
+        features = await get_text('h3[data-qa="POSTING_CARD_FEATURES"]')
 
         tamanho = self._extract_val(features, r"(\d+)\s?m²")
         quartos = self._extract_val(features, r"(\d+)\s+quartos?")
@@ -28,14 +28,15 @@ class ImovelWebScraper(BaseScraper):
         banheiros = int(banheiros) if banheiros else None
         vagas = int(vagas) if vagas else None
 
-        rua = get_text('.postingLocations-module__location-address-in-listing')
-        bairro = get_text('[data-qa="POSTING_CARD_LOCATION"]')
+        rua = await get_text('.postingLocations-module__location-address-in-listing')
+        bairro = await get_text('[data-qa="POSTING_CARD_LOCATION"]')
         localizacao = f"{bairro}, {rua}" if bairro and rua else bairro or rua
 
-        url_el = ad.query_selector("a")
-        url = "https://www.imovelweb.com.br/" + url_el.get_attribute("href") if url_el else None
+        url_el = await ad.query_selector("a")
+        href = await url_el.get_attribute("href") if url_el else None
+        url = "https://www.imovelweb.com.br/" + href if href else None
 
-        descricao = url_el.inner_text().strip() if url_el else ""
+        descricao = (await url_el.inner_text()).strip() if url_el else ""
         titulo = f"Casa para comprar em {bairro}"
 
         return {
