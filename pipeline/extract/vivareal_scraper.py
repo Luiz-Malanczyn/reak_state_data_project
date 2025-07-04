@@ -1,4 +1,5 @@
 from pipeline.extract.base_scraper import BaseScraper
+from util.logger import logger
 import re
 
 class VivaRealScraper(BaseScraper):
@@ -83,8 +84,7 @@ class VivaRealScraper(BaseScraper):
             return results
 
         except Exception as e:
-            from util.logger import logger
-            logger.warning(f"Falha ao processar popup de deduplicação: {e}")
+            self.logger.warning(f"Falha ao processar popup de deduplicação: {e}")
             return []
 
     def _parse_int(self, text):
