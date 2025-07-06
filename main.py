@@ -28,11 +28,11 @@ async def run_scraper(scraper_cls, playwright):
 async def main():
     async with async_playwright() as playwright:
         scrapers = [
-            OlxScraper(playwright),
-            VivaRealScraper(playwright),
+            # OlxScraper(playwright),
+            # VivaRealScraper(playwright),
             ChavesNaMaoScraper(playwright),
-            ImovelWebScraper(playwright),
-            ZapImoveisScraper(playwright),
+            # ImovelWebScraper(playwright),
+            # ZapImoveisScraper(playwright),
         ]
 
         results = await asyncio.gather(*(s.extract() for s in scrapers))

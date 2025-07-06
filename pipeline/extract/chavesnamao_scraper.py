@@ -2,20 +2,39 @@ from pipeline.extract.base_scraper import BaseScraper
 import re
 
 class ChavesNaMaoScraper(BaseScraper):
-    def __init__(self, playwright):
-        super().__init__("https://www.chavesnamao.com.br/imoveis-a-venda/pr-curitiba/", playwright)
+    def __init__(self, playwright, valMin=0, valMax=100000):
+        super().__init__(f"https://www.chavesnamao.com.br/imoveis-residenciais-a-venda/pr-curitiba/?filtro=pmin%3A{valMin}%2Cpmax%3A{valMax}&pg=", playwright)
+
 
     async def get_ads(self, page):
         page_height = await page.evaluate("document.body.scrollHeight")
         current_height = 500
-
         while current_height + 3500 < page_height:
             await page.evaluate(f"window.scrollTo(0, {current_height})")
             await page.wait_for_timeout(1000)
             current_height += 500
-
         await page.wait_for_timeout(2000)
-        return await page.query_selector_all('div[data-template="list"].styles-module__saqrOW__card.card-module__1awNxG__card')
+
+        cutoff_el = await page.query_selector(".style-module__dHpwYa__container")
+        cutoff_top = None
+        if cutoff_el:
+            cutoff_top = await page.evaluate("(el) => el.offsetTop", cutoff_el)
+
+        all_ads = await page.query_selector_all('div[data-template="list"].styles-module__saqrOW__card.card-module__1awNxG__card')
+
+        if not cutoff_top:
+            return all_ads
+
+        filtered_ads = []
+        for ad in all_ads:
+            ad_top = await page.evaluate("(el) => el.offsetTop", ad)
+            if ad_top < cutoff_top:
+                filtered_ads.append(ad)
+            else:
+                break
+
+        return filtered_ads
+
 
     async def parse_ad(self, ad, page):
         async def get_text(el):
@@ -81,3 +100,9 @@ class ChavesNaMaoScraper(BaseScraper):
     def _extract_val(self, text, pattern):
         match = re.search(pattern, text)
         return match.group(1).replace(".", "").replace(",", ".") if match else None
+    
+    async def should_continue(self, page):
+        elemento = await page.query_selector(".style-module__dHpwYa__container")
+        if elemento:
+            return False
+        return True

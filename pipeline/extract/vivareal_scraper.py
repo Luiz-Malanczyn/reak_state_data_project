@@ -4,7 +4,7 @@ import re
 
 class VivaRealScraper(BaseScraper):
     def __init__(self, playwright):
-        super().__init__("https://www.zapimoveis.com.br/venda/casas/pr+curitiba/", playwright)
+        super().__init__("https://www.vivareal.com.br/venda/parana/curitiba/", playwright)
 
     async def get_ads(self, page):
         return await page.query_selector_all('[data-cy="rp-property-cd"]')
