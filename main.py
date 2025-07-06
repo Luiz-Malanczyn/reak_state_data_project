@@ -9,10 +9,10 @@ from pipeline.extract.zapimoveis_scraper import ZapImoveisScraper
 SEM = asyncio.Semaphore(2)
 
 SCRAPER_CLS = [
-    OlxScraper,
-    #VivaRealScraper,
+    #OlxScraper,
     #ChavesNaMaoScraper,
     #ImovelWebScraper,
+    VivaRealScraper,
     #ZapImoveisScraper,
 ]
 

@@ -19,7 +19,6 @@ class OlxScraper(BaseScraper):
             max_price=max_price
         )
 
-
     def build_url(self, page_number, valMin=None, valMax=None):
         filtro = ""
         if valMin is not None and valMax is not None:

@@ -55,7 +55,7 @@ class BaseScraper(ABC):
                     url = self.build_url(page_number, valMin, valMax)
                     self.logger.debug(f"Acessando URL: {url}")
                     await page.goto(url, timeout=60_000, wait_until="domcontentloaded")
-                    await page.wait_for_timeout(2_000)
+                    await page.wait_for_timeout(60_000)
 
                     ads = await self.get_ads(page)
                     if not ads:

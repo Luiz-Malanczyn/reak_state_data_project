@@ -3,8 +3,33 @@ from util.logger import logger
 import re
 
 class VivaRealScraper(BaseScraper):
-    def __init__(self, playwright):
-        super().__init__("https://www.vivareal.com.br/venda/parana/curitiba/", playwright)
+    def __init__(
+        self,
+        playwright,
+        *,
+        iterate_price_ranges=False,
+        price_start=0,
+        price_step=10_000,
+        max_price=1_000_000
+    ):
+        super().__init__(
+            playwright,
+            iterate_price_ranges=iterate_price_ranges,
+            price_start=price_start,
+            price_step=price_step,
+            max_price=max_price
+        )
+
+    def build_url(self, page_number, valMin=None, valMax=None):
+        page_filter = ""
+        if page_number > 1:
+            page_filter = f'&pagina={page_number}'
+        filtro = ""
+        if valMin is not None and valMax is not None:
+            filtro = f"?onde=%2CParan%C3%A1%2CCuritiba%2C%2C%2C%2C%2Ccity%2CBR%3EParana%3ENULL%3ECuritiba%2C-25.437238%2C-49.269973%2C{page_filter}&precoMinimo={valMin}&precoMaximo={valMax}&transacao=venda"
+        return f"https://www.vivareal.com.br/venda/parana/curitiba/{filtro}"
+    
+    
 
     async def get_ads(self, page):
         return await page.query_selector_all('[data-cy="rp-property-cd"]')
@@ -96,3 +121,13 @@ class VivaRealScraper(BaseScraper):
     def _extract_val(self, raw_text, pattern):
         match = re.search(pattern, raw_text)
         return match.group(1).strip() if match else None
+
+    async def should_continue(self, page):
+        elemento = await page.query_selector('button[data-testid="next-page"][disabled]')
+
+        if not elemento:
+            elemento = await page.query_selector('.font-bold.text-2')
+
+        if elemento:
+            return False
+        return True
