@@ -6,34 +6,34 @@ from pipeline.extract.chavesnamao_scraper import ChavesNaMaoScraper
 from pipeline.extract.imovelweb_scraper import ImovelWebScraper
 from pipeline.extract.zapimoveis_scraper import ZapImoveisScraper
 
-# Limita concorrência (útil se o PC não aguenta abrir 5 browsers de uma vez)
 SEM = asyncio.Semaphore(2)
 
-# Lista de scrapers a rodar
 SCRAPER_CLS = [
-    OlxScraper,
-    VivaRealScraper,
+    #OlxScraper,
+    #VivaRealScraper,
     ChavesNaMaoScraper,
-    ImovelWebScraper,
-    ZapImoveisScraper,
+    #ImovelWebScraper,
+    #ZapImoveisScraper,
 ]
 
-# Função que roda um scraper isoladamente
 async def run_scraper(scraper_cls, playwright):
     async with SEM:
         scraper = scraper_cls(playwright=playwright)
         return await scraper.extract()
 
-# Função principal que coordena tudo
 async def main():
     async with async_playwright() as playwright:
         scrapers = [
-            # OlxScraper(playwright),
-            # VivaRealScraper(playwright),
-            ChavesNaMaoScraper(playwright),
-            # ImovelWebScraper(playwright),
-            # ZapImoveisScraper(playwright),
+            cls(
+                playwright,
+                iterate_price_ranges=True,
+                price_start=10_000,
+                max_price=50_000,
+                price_step=10_000
+            )
+            for cls in SCRAPER_CLS
         ]
+
 
         results = await asyncio.gather(*(s.extract() for s in scrapers))
         all_ads = [ad for group in results for ad in (group or [])]

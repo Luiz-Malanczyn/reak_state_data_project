@@ -2,27 +2,59 @@ from pipeline.extract.base_scraper import BaseScraper
 import re
 
 class ChavesNaMaoScraper(BaseScraper):
-    def __init__(self, playwright, valMin=0, valMax=100000):
-        super().__init__(f"https://www.chavesnamao.com.br/imoveis-residenciais-a-venda/pr-curitiba/?filtro=pmin%3A{valMin}%2Cpmax%3A{valMax}&pg=", playwright)
+    def __init__(
+        self,
+        playwright,
+        *,
+        iterate_price_ranges=False,
+        price_start=0,
+        price_step=10_000,
+        max_price=1_000_000
+    ):
+        super().__init__(
+            playwright,
+            iterate_price_ranges=iterate_price_ranges,
+            price_start=price_start,
+            price_step=price_step,
+            max_price=max_price
+        )
 
+
+    def build_url(self, page_number, valMin=None, valMax=None):
+        filtro = ""
+        if valMin is not None and valMax is not None:
+            filtro = f"?filtro=pmin%3A{valMin}%2Cpmax%3A{valMax}"
+        return f"https://www.chavesnamao.com.br/imoveis-residenciais-a-venda/pr-curitiba/{filtro}&pg={page_number}"
 
     async def get_ads(self, page):
+        cutoff_top = None
+
+        async def get_cutoff_top():
+            cutoff_el = await page.query_selector(".style-module__dHpwYa__container")
+            if cutoff_el:
+                return await page.evaluate("(el) => el.offsetTop", cutoff_el)
+            return None
+
         page_height = await page.evaluate("document.body.scrollHeight")
         current_height = 500
+
         while current_height + 3500 < page_height:
             await page.evaluate(f"window.scrollTo(0, {current_height})")
             await page.wait_for_timeout(1000)
-            current_height += 500
-        await page.wait_for_timeout(2000)
 
-        cutoff_el = await page.query_selector(".style-module__dHpwYa__container")
-        cutoff_top = None
-        if cutoff_el:
-            cutoff_top = await page.evaluate("(el) => el.offsetTop", cutoff_el)
+            cutoff_top = await get_cutoff_top()
+            if cutoff_top is not None:
+                if current_height >= cutoff_top:
+                    break
+
+            current_height += 500
+            page_height = await page.evaluate("document.body.scrollHeight")
+
+        await page.wait_for_timeout(2000)
 
         all_ads = await page.query_selector_all('div[data-template="list"].styles-module__saqrOW__card.card-module__1awNxG__card')
 
-        if not cutoff_top:
+        if cutoff_top is None:
             return all_ads
 
         filtered_ads = []
@@ -34,6 +66,7 @@ class ChavesNaMaoScraper(BaseScraper):
                 break
 
         return filtered_ads
+
 
 
     async def parse_ad(self, ad, page):
