@@ -2,8 +2,29 @@ from pipeline.extract.base_scraper import BaseScraper
 import re
 
 class ImovelWebScraper(BaseScraper):
-    def __init__(self, playwright):
-        super().__init__("https://www.imovelweb.com.br/casas-venda-curitiba-pr.html", playwright)
+    def __init__(
+        self,
+        playwright,
+        *,
+        iterate_price_ranges=False,
+        price_start=0,
+        price_step=10_000,
+        max_price=1_000_000
+    ):
+        super().__init__(
+            playwright,
+            iterate_price_ranges=iterate_price_ranges,
+            price_start=price_start,
+            price_step=price_step,
+            max_price=max_price
+        )
+
+
+    def build_url(self, page_number, valMin=None, valMax=None):
+        filtro = ""
+        if valMin is not None and valMax is not None:
+            filtro = f"-{valMin}-{valMax}-reales-pagina"
+        return f"https://www.imovelweb.com.br/casas-venda-curitiba-pr{filtro}.html"
 
     async def get_ads(self, page):
         return await page.query_selector_all('div.postingsList-module__card-container')
@@ -42,7 +63,7 @@ class ImovelWebScraper(BaseScraper):
         return {
             "titulo": titulo,
             "preco": preco,
-            "iptu": None,  # Não está presente
+            "iptu": None,
             "condominio": condominio,
             "quartos": quartos,
             "tamanho": tamanho,
@@ -59,3 +80,9 @@ class ImovelWebScraper(BaseScraper):
             return None
         match = re.search(pattern, text, re.IGNORECASE)
         return match.group(1).replace('.', '').replace(',', '.') if match else None
+    
+    async def should_continue(self, page):
+        elemento = await page.query_selector(".thinPostingsList-module__h2-style")
+        if elemento:
+            return False
+        return True

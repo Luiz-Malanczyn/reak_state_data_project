@@ -11,8 +11,8 @@ SEM = asyncio.Semaphore(2)
 SCRAPER_CLS = [
     #OlxScraper,
     #VivaRealScraper,
-    ChavesNaMaoScraper,
-    #ImovelWebScraper,
+    #ChavesNaMaoScraper,
+    ImovelWebScraper,
     #ZapImoveisScraper,
 ]
 
@@ -27,8 +27,8 @@ async def main():
             cls(
                 playwright,
                 iterate_price_ranges=True,
-                price_start=10_000,
-                max_price=50_000,
+                price_start=150_000,
+                max_price=500_000,
                 price_step=10_000
             )
             for cls in SCRAPER_CLS
