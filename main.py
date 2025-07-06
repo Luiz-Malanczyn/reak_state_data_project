@@ -9,10 +9,10 @@ from pipeline.extract.zapimoveis_scraper import ZapImoveisScraper
 SEM = asyncio.Semaphore(2)
 
 SCRAPER_CLS = [
-    #OlxScraper,
+    OlxScraper,
     #VivaRealScraper,
     #ChavesNaMaoScraper,
-    ImovelWebScraper,
+    #ImovelWebScraper,
     #ZapImoveisScraper,
 ]
 
@@ -27,8 +27,8 @@ async def main():
             cls(
                 playwright,
                 iterate_price_ranges=True,
-                price_start=150_000,
-                max_price=500_000,
+                price_start=100_000,
+                max_price=120_000,
                 price_step=10_000
             )
             for cls in SCRAPER_CLS
