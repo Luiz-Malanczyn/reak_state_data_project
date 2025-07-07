@@ -1,3 +1,5 @@
+import os
+import pandas as pd
 from abc import ABC, abstractmethod
 from util.logger import logger
 
@@ -37,7 +39,7 @@ class BaseScraper(ABC):
     async def extract(self):
         self.logger.info(f"Iniciando extração de: {self.__class__.__name__}")
         await self.setup()
-        all_ads = []
+        num_of_ads = 0
 
         try:
             page = await self.browser.new_page()
@@ -55,7 +57,7 @@ class BaseScraper(ABC):
                     url = self.build_url(page_number, valMin, valMax)
                     self.logger.debug(f"Acessando URL: {url}")
                     await page.goto(url, timeout=60_000, wait_until="domcontentloaded")
-                    await page.wait_for_timeout(60_000)
+                    await page.wait_for_timeout(5_000)
 
                     ads = await self.get_ads(page)
                     if not ads:
@@ -64,12 +66,26 @@ class BaseScraper(ABC):
 
                     self.logger.info(f"{len(ads)} anúncios encontrados na página {page_number} (Faixa: {valMin}-{valMax})")
 
+                    all_ads = []
                     for idx, ad in enumerate(ads):
                         try:
                             ad_data = await self.parse_ad(ad, page)
-                            if ad_data:
-                                (all_ads.extend(ad_data) if isinstance(ad_data, list)
-                                 else all_ads.append(ad_data))
+                            all_ads.append(ad_data)
+
+                            if all_ads:
+                                class_name = self.__class__.__name__.replace("Scraper", "")
+                                filename = f"{class_name}_page_{page_number}_range_{valMin}_{valMax}.csv"
+                                self.output_dir = "/mnt/d/Projetos/real_state_project/dev/data"
+                                filepath = os.path.join(self.output_dir, filename)
+
+                                if not isinstance(all_ads, list):
+                                    all_ads = [all_ads]
+
+                                df = pd.DataFrame(all_ads)
+                                df.to_csv(filepath, index=False)
+                                self.logger.info(f"Salvo: {filepath}")
+                            num_of_ads += len(all_ads)
+
                         except Exception as e:
                             self.logger.warning(f"[{idx}] Falha ao extrair anúncio: {e}")
 
@@ -83,9 +99,9 @@ class BaseScraper(ABC):
             self.logger.error(f"Erro durante a extração: {e}")
         finally:
             await self.teardown()
-            self.logger.success(f"Extração finalizada. Total de anúncios válidos: {len(all_ads)}")
+            self.logger.success(f"Extração finalizada. Total de anúncios válidos: {num_of_ads}")
 
-        return all_ads
+        return num_of_ads
 
     @abstractmethod
     async def get_ads(self, page):

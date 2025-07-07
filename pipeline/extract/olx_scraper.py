@@ -40,7 +40,7 @@ class OlxScraper(BaseScraper):
         iptu = self._extract_val(preco_raw, r"IPTU R\$ ([\d\.,]+)")
         condominio = self._extract_val(preco_raw, r"Condomínio R\$ ([\d\.,]+)")
 
-        detalhes_raw = await get_text(".olx-adcard__detalhes")
+        detalhes_raw = await get_text(".olx-adcard__details")
         detalhes = detalhes_raw.split("\n") if detalhes_raw else []
 
         quartos = self._parse_int(detalhes[0]) if len(detalhes) > 0 else None

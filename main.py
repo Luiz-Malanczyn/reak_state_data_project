@@ -9,10 +9,10 @@ from pipeline.extract.zapimoveis_scraper import ZapImoveisScraper
 SEM = asyncio.Semaphore(2)
 
 SCRAPER_CLS = [
-    #OlxScraper,
-    #ChavesNaMaoScraper,
+    OlxScraper,
+    ChavesNaMaoScraper,
     #ImovelWebScraper,
-    VivaRealScraper,
+    #VivaRealScraper,
     #ZapImoveisScraper,
 ]
 
@@ -27,17 +27,17 @@ async def main():
             cls(
                 playwright,
                 iterate_price_ranges=True,
-                price_start=100_000,
-                max_price=120_000,
+                price_start=120_000,
+                max_price=2_000_000,
                 price_step=10_000
             )
             for cls in SCRAPER_CLS
         ]
 
-
         results = await asyncio.gather(*(s.extract() for s in scrapers))
-        all_ads = [ad for group in results for ad in (group or [])]
-        print(f"Total de anúncios: {len(all_ads)}")
+        total_ads = sum(results)
+        print(f"Total de anúncios: {total_ads}")
+
 
 
 if __name__ == "__main__":
